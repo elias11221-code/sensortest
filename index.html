@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Neigungsmesser</title>
+<style>
+:root{color-scheme:dark}
+html,body{margin:0;height:100%}
+body{background:#111;color:#eee;font-family:-apple-system,system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;padding:max(20px,env(safe-area-inset-top)) 16px max(20px,env(safe-area-inset-bottom));box-sizing:border-box}
+h1{font-size:20px;font-weight:500;margin:0 0 16px}
+button{font:inherit;font-size:16px;padding:12px 24px;border-radius:12px;border:0;background:#2a6df4;color:#fff;margin-bottom:12px}
+button:disabled{background:#333;color:#999}
+#status{font-size:13px;color:#999;min-height:18px;margin-bottom:12px;text-align:center}
+canvas{width:min(80vw,320px);height:min(80vw,320px);background:#1b1b1b;border-radius:16px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;max-width:360px}
+.card{background:#1b1b1b;border-radius:12px;padding:12px;min-width:0}
+.label{font-size:12px;color:#999}
+.value{font-size:24px;font-variant-numeric:tabular-nums;margin-top:4px}
+.unit{font-size:12px;color:#888}
+</style>
+</head>
+<body>
+<h1>Neigung &amp; Beschleunigung</h1>
+<button id="start">Sensoren starten</button>
+<div id="status">Tippe auf den Button, um den Zugriff zu erlauben.</div>
+<canvas id="pad" width="640" height="640"></canvas>
+<div class="grid">
+  <div class="card"><div class="label">Beschleunigung X</div><div class="value" id="ax">–</div><div class="unit">m/s²</div></div>
+  <div class="card"><div class="label">Beschleunigung Y</div><div class="value" id="ay">–</div><div class="unit">m/s²</div></div>
+  <div class="card"><div class="label">Neigung links/rechts</div><div class="value" id="gamma">–</div><div class="unit">Grad</div></div>
+  <div class="card"><div class="label">Neigung vor/zurück</div><div class="value" id="beta">–</div><div class="unit">Grad</div></div>
+</div>
+<script>
+const btn = document.getElementById('start');
+const statusEl = document.getElementById('status');
+const canvas = document.getElementById('pad');
+const ctx = canvas.getContext('2d');
+const out = id => document.getElementById(id);
+let gamma = 0, beta = 0, ax = 0, ay = 0;
+
+function fmt(v){ return (v == null || isNaN(v)) ? '–' : (Math.round(v * 100) / 100).toFixed(2); }
+
+function onMotion(e){
+  const a = e.acceleration;
+  if (!a) return;
+  ax = a.x || 0;
+  ay = a.y || 0;
+  out('ax').textContent = fmt(ax);
+  out('ay').textContent = fmt(ay);
+  draw();
+}
+
+function onOrientation(e){
+  gamma = e.gamma || 0;
+  beta = e.beta || 0;
+  out('gamma').textContent = fmt(gamma);
+  out('beta').textContent = fmt(beta);
+  draw();
+}
+
+function draw(){
+  const w = canvas.width, h = canvas.height, c = w / 2;
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(c, 0); ctx.lineTo(c, h);
+  ctx.moveTo(0, c); ctx.lineTo(w, c);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(c, c, c * 0.5, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Neigungspunkt: gamma nach rechts, beta nach unten (Grad auf ±45 begrenzt)
+  const clamp = v => Math.max(-45, Math.min(45, v));
+  const px = c + (clamp(gamma) / 45) * (c - 30);
+  const py = c + (clamp(beta) / 45) * (c - 30);
+  ctx.fillStyle = '#2a6df4';
+  ctx.beginPath();
+  ctx.arc(px, py, 22, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Beschleunigungsvektor (ohne Schwerkraft), als Pfeil vom Mittelpunkt
+  const scale = 12;
+  const tx = c - ax * scale, ty = c + ay * scale;
+  ctx.strokeStyle = '#ffb020';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(c, c);
+  ctx.lineTo(tx, ty);
+  ctx.stroke();
+}
+
+btn.addEventListener('click', async () => {
+  try {
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+      const r = await DeviceMotionEvent.requestPermission();
+      if (r !== 'granted') { statusEl.textContent = 'Zugriff verweigert. In den Safari-Einstellungen wieder erlauben.'; return; }
+    }
+    window.addEventListener('devicemotion', onMotion);
+    window.addEventListener('deviceorientation', onOrientation);
+    btn.disabled = true;
+    btn.textContent = 'Läuft';
+    statusEl.textContent = 'Bewege das iPhone.';
+  } catch (err) {
+    statusEl.textContent = 'Fehler: ' + err.message;
+  }
+});
+
+if (typeof DeviceMotionEvent === 'undefined') {
+  statusEl.textContent = 'Kein Bewegungssensor gefunden. Die Seite braucht ein iPhone oder Android mit Sensoren.';
+  btn.disabled = true;
+}
+draw();
+</script>
+</body>
+</html>
